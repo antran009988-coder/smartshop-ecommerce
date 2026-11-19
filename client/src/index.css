@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Thiết lập mặc định nền tối cho toàn bộ trang web đồ án */
+body {
+  background-color: #020617; /* Màu nền slate-950 siêu đẹp */
+  color: #f8fafc;
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
