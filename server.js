@@ -409,7 +409,7 @@ app.delete('/api/admin/products/:id', async (req, res) => {
 const distDir = path.join(__dirname, 'client', 'dist');
 if (fs.existsSync(distDir)) {
   app.use(express.static(distDir));
-  app.get('/(.*)', (req, res) => {
+  app.use((req, res) => {
     res.sendFile(path.join(distDir, 'index.html'));
   });
 }
