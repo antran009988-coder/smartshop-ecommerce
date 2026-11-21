@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
   ShoppingCart, Eye, Package, Sparkles, X, Trash2, Plus, Minus, CheckCircle,
-  Search, ShieldAlert, Star, User, LogOut, CreditCard, QrCode, MessageSquare,
+  Search, ShieldAlert, User, LogOut, CreditCard, QrCode, MessageSquare,
   History, MapPin, Ban, Send, Bot, Headphones, Cpu, Layers, BarChart3,
   Truck, CheckCheck, Clock, Flame, ChevronLeft, ChevronRight, PlusCircle
 } from 'lucide-react';
