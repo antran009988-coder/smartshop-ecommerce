@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
+const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
 
 const app = express();
@@ -177,8 +179,14 @@ async function initDB() {
 
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ success: false, message: 'Vui lòng nhập đầy đủ tài khoản và mật khẩu!' });
+  }
   try {
-    const result = await pool.query('SELECT * FROM users WHERE username = $1 AND password = $2', [username, password]);
+    const result = await pool.query('SELECT * FROM users WHERE username = $1 AND password = $2', [
+      String(username).trim(),
+      String(password)
+    ]);
     if (result.rows.length > 0) {
       const user = result.rows[0];
       res.json({ success: true, user: { username: user.username, full_name: user.full_name, role: user.role } });
@@ -192,14 +200,18 @@ app.post('/api/login', async (req, res) => {
 
 app.post('/api/register', async (req, res) => {
   const { username, password, full_name } = req.body;
+  if (!username || !String(username).trim() || !password || String(password).length < 4) {
+    return res.status(400).json({ success: false, message: 'Tên đăng nhập và mật khẩu (tối thiểu 4 ký tự) là bắt buộc!' });
+  }
   try {
-    const checkUser = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+    const cleanUsername = String(username).trim();
+    const checkUser = await pool.query('SELECT id FROM users WHERE username = $1', [cleanUsername]);
     if (checkUser.rows.length > 0) {
       return res.status(400).json({ success: false, message: 'Tên đăng nhập đã tồn tại!' });
     }
     const result = await pool.query(
       'INSERT INTO users (username, password, full_name, role) VALUES ($1, $2, $3, $4) RETURNING username, full_name, role;',
-      [username, password, full_name || 'Khách hàng mới', 'customer']
+      [cleanUsername, String(password), String(full_name || 'Khách hàng mới').trim(), 'customer']
     );
     res.json({ success: true, user: result.rows[0] });
   } catch (err) {
@@ -259,9 +271,13 @@ app.post('/api/products/:id/reviews', async (req, res) => {
   try {
     const { id } = req.params;
     const { user_name, rating, comment } = req.body;
+    const safeRating = Math.min(5, Math.max(1, Number(rating) || 5));
+    if (!comment || !String(comment).trim()) {
+      return res.status(400).json({ error: 'Nội dung đánh giá không được để trống' });
+    }
     const result = await pool.query(
       'INSERT INTO reviews (product_id, user_name, rating, comment) VALUES ($1, $2, $3, $4) RETURNING *',
-      [id, user_name, rating, comment]
+      [id, String(user_name || 'Khách vãng lai').trim(), safeRating, String(comment).trim()]
     );
     res.json(result.rows[0]);
   } catch (err) {
@@ -271,11 +287,25 @@ app.post('/api/products/:id/reviews', async (req, res) => {
 
 app.post('/api/orders', async (req, res) => {
   const { username, full_name, phone, address, payment_method, total_amount, items } = req.body;
+  if (!full_name || !String(full_name).trim() || !phone || !String(phone).trim() || !address || !String(address).trim()) {
+    return res.status(400).json({ success: false, message: 'Vui lòng nhập đầy đủ họ tên, số điện thoại và địa chỉ!' });
+  }
+  if (!Array.isArray(items) || items.length === 0 || Number(total_amount) <= 0) {
+    return res.status(400).json({ success: false, message: 'Giỏ hàng trống hoặc tổng tiền không hợp lệ!' });
+  }
   try {
     const result = await pool.query(
       `INSERT INTO orders (username, full_name, phone, address, payment_method, total_amount, items, status) 
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending') RETURNING *;`,
-      [username || 'guest', full_name, phone, address, payment_method, total_amount, JSON.stringify(items)]
+      [
+        username || 'guest',
+        String(full_name).trim(),
+        String(phone).trim(),
+        String(address).trim(),
+        payment_method || 'cod',
+        Number(total_amount),
+        JSON.stringify(items)
+      ]
     );
     res.json({ success: true, order: result.rows[0] });
   } catch (err) {
@@ -317,6 +347,10 @@ app.get('/api/admin/orders', async (req, res) => {
 app.put('/api/admin/orders/:id/status', async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
+  const allowedStatuses = ['pending', 'shipping', 'delivered', 'cancelled'];
+  if (!allowedStatuses.includes(status)) {
+    return res.status(400).json({ success: false, message: 'Trạng thái đơn hàng không hợp lệ!' });
+  }
   try {
     const result = await pool.query(
       'UPDATE orders SET status = $1 WHERE id = $2 RETURNING *',
@@ -331,8 +365,12 @@ app.put('/api/admin/orders/:id/status', async (req, res) => {
 app.post('/api/admin/products', async (req, res) => {
   try {
     const { name, base_price, category_id, description, image_url, specs } = req.body;
+    if (!name || !String(name).trim() || Number(base_price) <= 0) {
+      return res.status(400).json({ success: false, error: 'Tên sản phẩm và giá gốc (> 0) là bắt buộc!' });
+    }
+    const cleanName = String(name).trim();
     const slug =
-      name
+      cleanName
         .toLowerCase()
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
@@ -343,7 +381,7 @@ app.post('/api/admin/products', async (req, res) => {
       `INSERT INTO products (name, slug, base_price, view_count, rating, category_id, description, image_url, specs) 
        VALUES ($1, $2, $3, 100, 5.0, $4, $5, $6, $7) RETURNING *;`,
       [
-        name,
+        cleanName,
         slug,
         Number(base_price),
         Number(category_id) || 1,
@@ -367,6 +405,14 @@ app.delete('/api/admin/products/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+const distDir = path.join(__dirname, 'client', 'dist');
+if (fs.existsSync(distDir)) {
+  app.use(express.static(distDir));
+  app.get('/(.*)', (req, res) => {
+    res.sendFile(path.join(distDir, 'index.html'));
+  });
+}
 
 const PORT = process.env.PORT || 5000;
 async function startServer() {
